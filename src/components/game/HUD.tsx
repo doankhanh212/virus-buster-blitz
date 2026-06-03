@@ -1,4 +1,3 @@
-import { Progress } from "@/components/ui/progress";
 import { Clock, Trophy, Zap, Target, Lock, DatabaseBackup, Users } from "lucide-react";
 
 interface Props {
