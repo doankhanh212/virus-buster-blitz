@@ -1,10 +1,10 @@
-export type ObjectKind = "danger" | "safe" | "boss";
+export type ObjectKind = "danger" | "safe";
 
 export interface ObjectDef {
   id: string;
   label: string;
   kind: ObjectKind;
-  icon: string; // lucide icon name key
+  icon: string;
   color: "red" | "green" | "cyan" | "purple" | "yellow";
 }
 
@@ -20,100 +20,91 @@ export const DANGEROUS: ObjectDef[] = [
 ];
 
 export const SAFE: ObjectDef[] = [
-  { id: "backup", label: "Bản sao dữ liệu cứu hộ", kind: "safe", icon: "DatabaseBackup", color: "green" },
+  {
+    id: "backup",
+    label: "Bản sao dữ liệu cứu hộ",
+    kind: "safe",
+    icon: "DatabaseBackup",
+    color: "green",
+  },
   { id: "mfa", label: "MFA", kind: "safe", icon: "KeyRound", color: "cyan" },
   { id: "itteam", label: "Đội cứu hộ kỹ thuật", kind: "safe", icon: "Wrench", color: "cyan" },
   { id: "firewall", label: "Tường lửa", kind: "safe", icon: "Flame", color: "cyan" },
   { id: "shield", label: "Khiên bảo vệ", kind: "safe", icon: "ShieldCheck", color: "green" },
   { id: "customer", label: "Khách hàng", kind: "safe", icon: "Users", color: "green" },
   { id: "cleandb", label: "Kho dữ liệu sạch", kind: "safe", icon: "Database", color: "green" },
-  { id: "safesys", label: "Hệ thống đang an toàn", kind: "safe", icon: "CheckCircle2", color: "cyan" },
+  {
+    id: "safesys",
+    label: "Hệ thống đang an toàn",
+    kind: "safe",
+    icon: "CheckCircle2",
+    color: "cyan",
+  },
 ];
-
-export const BOSS: ObjectDef = {
-  id: "boss",
-  label: "Ransomware Boss",
-  kind: "boss",
-  icon: "Skull",
-  color: "red",
-};
 
 export interface RoundConfig {
   id: number;
   title: string;
   intro: string;
-  duration: number; // seconds
+  hint?: string;
+  duration: number;
   spawnMs: number;
   lifetimeMs: number;
-  safeRatio: number; // 0..1
-  bossActive?: boolean;
+  safeRatio: number;
 }
 
 export const ROUNDS: RoundConfig[] = [
   {
     id: 1,
-    title: "Khởi động: Đập đúng mối nguy",
-    intro: "Đập virus, đừng đập backup. Backup không có tội.",
+    title: "30 giây cứu công ty",
+    intro:
+      "Đập đúng mối nguy, né backup và hệ thống bảo vệ. Cứ mỗi 10 giây nhịp game sẽ nhanh hơn.",
     duration: 30,
     spawnMs: 900,
     lifetimeMs: 1800,
     safeRatio: 0.25,
   },
-  {
-    id: 2,
-    title: "Virus mở tour nội bộ",
-    intro: "File .pdf.exe không phải PDF. Nó là drama đội lốt hóa đơn.",
-    duration: 45,
-    spawnMs: 650,
-    lifetimeMs: 1400,
-    safeRatio: 0.35,
-  },
-  {
-    id: 3,
-    title: "Bảo vệ bản sao dữ liệu cứu hộ",
-    intro: "Bản sao dữ liệu còn sống thì công ty còn hy vọng.",
-    duration: 45,
-    spawnMs: 500,
-    lifetimeMs: 1200,
-    safeRatio: 0.5,
-  },
-  {
-    id: 4,
-    title: "iPhone Gate: Final Boss",
-    intro: "Vượt qua vòng này, bạn chạm tay tới iPhone 17 Pro Max.",
-    duration: 30,
-    spawnMs: 380,
-    lifetimeMs: 1000,
-    safeRatio: 0.45,
-    bossActive: true,
-  },
 ];
 
 export const CORRECT_LINES = [
   "Virus bay màu!",
-  "Bạn vừa cứu công ty khỏi một pha tự hủy.",
-  "Email lừa đảo bị bắt quả tang.",
-  "File .pdf.exe hết đường diễn.",
-  "Backup vẫn sống. Hy vọng vẫn còn.",
-  "Phòng IT bắt đầu tin bạn rồi đó.",
-  "Khách hàng chưa biết chuyện gì xảy ra. Tốt lắm.",
+  "Hacker khóc ròng!",
+  "File Server đang reo hò!",
+  "File .pdf.exe hết đường diễn!",
+  "Email lừa đảo bị bắt quả tang!",
+  "Một cú đập, một drama biến mất.",
+];
+
+export const WRONG_BACKUP_LINES = [
+  "Backup bị đập! Phòng IT đang uống cà phê không đường...",
+  "Phao cứu sinh bị bạn úp sọt rồi!",
+  "Backup không có tội!",
+];
+
+export const WRONG_DEFENSE_LINES = [
+  "MFA vừa bị bạn giết! Hacker cảm ơn bạn!",
+  "Tường lửa đang bảo vệ bạn mà!",
+  "Bạn vừa tự phá hàng rào nhà mình.",
+];
+
+export const WRONG_CUSTOMER_LINES = [
+  "Khách hàng đang gọi tổng đài chửi IT...",
+  "Đừng đập khách hàng! Họ đang trả lương cho bạn đấy!",
+  "Niềm tin khách hàng vừa bị trừ nhẹ một nhịp.",
 ];
 
 export const WRONG_LINES = [
-  "Đập nhầm backup rồi! Backup không có tội.",
-  "MFA đang bảo vệ bạn mà, sao lại đánh nó?",
-  "Khách hàng không phải virus!",
-  "Phòng IT bắt đầu uống cà phê không đường.",
-  "Dữ liệu công ty đang nhìn bạn bằng ánh mắt thất vọng.",
-  "Ransomware vừa mở tour du lịch nội bộ.",
-  "Bạn click hơi nhiệt tình, nhưng hơi sai đối tượng.",
+  ...WRONG_BACKUP_LINES,
+  ...WRONG_DEFENSE_LINES,
+  ...WRONG_CUSTOMER_LINES,
+  "Đập sai rồi! Giờ virus gửi lời cảm ơn cá nhân đến bạn.",
 ];
 
-export const BOSS_LINES = [
-  "iPhone đang ở rất gần… nhưng ransomware đứng chắn trước cửa.",
-  "Boss không khó, boss chỉ không muốn bạn có iPhone.",
-  "Bạn đã né được drama, giờ né tiếp backup nha.",
-  "Sai một cú là iPhone chuyển sang chế độ truyền thuyết.",
+export const RANDOM_LINES = [
+  "Bạn đập đẹp lắm! Hacker đang chửi thề trong group Telegram.",
+  "Đập tiếp đi! File Server đang cổ vũ bạn như cổ vũ đội bóng.",
+  "Combo x10! Phòng IT đang xem bạn như siêu anh hùng.",
+  "Còn ít giây thôi, giữ bình tĩnh và né backup nha!",
 ];
 
 export interface Player {
@@ -127,13 +118,14 @@ export interface GameStats {
   combo: number;
   maxCombo: number;
   hits: number;
-  misses: number; // wrong clicks on safe OR missed dangers
+  misses: number;
   correctHits: number;
   totalClicks: number;
-  dataLocked: number; // 0..100
-  backupHealth: number; // 0..100
-  customerTrust: number; // 0..100
+  dataLocked: number;
+  backupHealth: number;
+  customerTrust: number;
   bossDefeats: number;
+  backupHits: number;
   finalRoundAccuracy: number;
   finalRoundMaxCombo: number;
   finalRoundSafeHits: number;
@@ -151,6 +143,7 @@ export const INITIAL_STATS: GameStats = {
   backupHealth: 100,
   customerTrust: 100,
   bossDefeats: 0,
+  backupHits: 0,
   finalRoundAccuracy: 0,
   finalRoundMaxCombo: 0,
   finalRoundSafeHits: 0,

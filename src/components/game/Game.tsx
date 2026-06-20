@@ -3,29 +3,30 @@ import { Button } from "@/components/ui/button";
 import { HUD } from "./HUD";
 import { GameIcon } from "./icon";
 import {
-  BOSS,
-  BOSS_LINES,
   CORRECT_LINES,
   DANGEROUS,
   INITIAL_STATS,
+  RANDOM_LINES,
   ROUNDS,
   SAFE,
+  WRONG_BACKUP_LINES,
+  WRONG_CUSTOMER_LINES,
+  WRONG_DEFENSE_LINES,
   WRONG_LINES,
   type GameStats,
   type ObjectDef,
   type Player,
   type RoundConfig,
 } from "@/lib/game/types";
-import { Play, Pause, ChevronRight, Trophy, Skull } from "lucide-react";
+import { Hammer, Pause, Play } from "lucide-react";
 
 interface SpawnedObj {
   uid: string;
   def: ObjectDef;
-  x: number; // %
-  y: number; // %
+  x: number;
+  y: number;
   born: number;
   lifetime: number;
-  hp?: number;
   exiting?: boolean;
 }
 
@@ -37,301 +38,369 @@ interface Popup {
   color: string;
 }
 
-type Phase = "intro" | "playing" | "paused" | "between" | "ended";
+type Phase = "intro" | "playing" | "paused" | "ended";
 
 export interface EndResult {
   stats: GameStats;
-  qualifiesPrize: boolean;
 }
 
+const DIFFICULTY_STEPS = [
+  { label: "Cơ bản", spawnMs: 900, lifetimeMs: 1800, safeRatio: 0.25, maxObjects: 7 },
+  { label: "Nhanh hơn", spawnMs: 650, lifetimeMs: 1450, safeRatio: 0.35, maxObjects: 8 },
+  { label: "Căng thẳng", spawnMs: 460, lifetimeMs: 1100, safeRatio: 0.45, maxObjects: 10 },
+] as const;
+
 const colorMap = {
-  red: { glow: "var(--neon-red)", border: "neon-text-red", chip: "from-[oklch(0.4_0.2_25)] to-[oklch(0.25_0.1_25)]" },
-  green: { glow: "var(--neon-green)", border: "neon-text-green", chip: "from-[oklch(0.4_0.18_145)] to-[oklch(0.25_0.1_145)]" },
-  cyan: { glow: "var(--neon-cyan)", border: "neon-text-cyan", chip: "from-[oklch(0.4_0.15_200)] to-[oklch(0.25_0.1_200)]" },
-  purple: { glow: "var(--neon-purple)", border: "neon-text-purple", chip: "from-[oklch(0.4_0.2_305)] to-[oklch(0.25_0.1_305)]" },
-  yellow: { glow: "var(--neon-yellow)", border: "neon-text-yellow", chip: "from-[oklch(0.4_0.18_95)] to-[oklch(0.25_0.1_95)]" },
+  red: {
+    glow: "var(--neon-red)",
+    chip: "from-[oklch(0.4_0.2_25)] to-[oklch(0.23_0.1_25)]",
+  },
+  green: {
+    glow: "var(--neon-green)",
+    chip: "from-[oklch(0.38_0.18_145)] to-[oklch(0.22_0.1_145)]",
+  },
+  cyan: {
+    glow: "var(--neon-cyan)",
+    chip: "from-[oklch(0.38_0.15_200)] to-[oklch(0.22_0.1_200)]",
+  },
+  purple: {
+    glow: "var(--neon-purple)",
+    chip: "from-[oklch(0.38_0.2_305)] to-[oklch(0.22_0.1_305)]",
+  },
+  yellow: {
+    glow: "var(--neon-yellow)",
+    chip: "from-[oklch(0.42_0.18_95)] to-[oklch(0.25_0.1_95)]",
+  },
 } as const;
 
-const BOSS_MAX_HP = 4;
+function rnd<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
 
-function rnd<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
+function clampMetric(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
 
-export function Game({ player, onEnd, onExit }: { player: Player; onEnd: (r: EndResult) => void; onExit: () => void }) {
-  const [roundIdx, setRoundIdx] = useState(0);
+export function Game({
+  player,
+  onEnd,
+  onExit,
+}: {
+  player: Player;
+  onEnd: (result: EndResult) => void;
+  onExit: () => void;
+}) {
   const [phase, setPhase] = useState<Phase>("intro");
   const [timeLeft, setTimeLeft] = useState(ROUNDS[0].duration);
   const [stats, setStats] = useState<GameStats>(INITIAL_STATS);
   const [objects, setObjects] = useState<SpawnedObj[]>([]);
   const [popups, setPopups] = useState<Popup[]>([]);
   const [shake, setShake] = useState(false);
-  const [bossActiveOnScreen, setBossActiveOnScreen] = useState<SpawnedObj | null>(null);
+  const [hammer, setHammer] = useState({ visible: false, bonk: false, touch: false });
 
-  // round-scoped stats for final boss qualification
+  const statsRef = useRef(stats);
+  const popupSeq = useRef(0);
   const roundStatsRef = useRef({ correct: 0, totalClicks: 0, safeHits: 0, maxCombo: 0 });
-
   const arenaRef = useRef<HTMLDivElement>(null);
-  const round = ROUNDS[roundIdx];
+  const hammerRef = useRef<HTMLDivElement>(null);
+  const hammerFrame = useRef<number | null>(null);
+  const pendingHammerPoint = useRef({ x: -120, y: -120 });
+  const round = ROUNDS[0];
 
   const accuracy = useMemo(() => {
-    const total = stats.totalClicks;
-    if (total === 0) return 100;
-    return Math.round((stats.correctHits / total) * 100);
-  }, [stats.totalClicks, stats.correctHits]);
+    if (stats.totalClicks === 0) return 100;
+    return Math.round((stats.correctHits / stats.totalClicks) * 100);
+  }, [stats.correctHits, stats.totalClicks]);
+  const difficultyStage = Math.min(
+    DIFFICULTY_STEPS.length - 1,
+    Math.floor((round.duration - timeLeft) / 10),
+  );
+  const difficulty = DIFFICULTY_STEPS[difficultyStage];
 
-  // popup helper
-  const popupSeq = useRef(0);
+  const updateStats = useCallback((updater: (current: GameStats) => GameStats) => {
+    setStats((current) => {
+      const next = updater(current);
+      statsRef.current = next;
+      return next;
+    });
+  }, []);
+
   const addPopup = useCallback((x: number, y: number, text: string, color: string) => {
     const id = ++popupSeq.current;
-    setPopups((p) => [...p, { id, x, y, text, color }]);
-    setTimeout(() => setPopups((p) => p.filter((q) => q.id !== id)), 950);
+    setPopups((current) => [...current, { id, x, y, text, color }]);
+    window.setTimeout(
+      () => setPopups((current) => current.filter((popup) => popup.id !== id)),
+      950,
+    );
   }, []);
 
-  // mutate stats with combo bonus
-  const applyCombo = useCallback((s: GameStats, newCombo: number): GameStats => {
-    let bonus = 0;
-    if (newCombo === 20) bonus = 50;
-    else if (newCombo === 10) bonus = 25;
-    else if (newCombo === 5) bonus = 10;
+  const applyCombo = useCallback(
+    (current: GameStats, combo: number) => {
+      let bonus = 0;
+      if (combo === 5) bonus = 10;
+      if (combo === 10) bonus = 25;
+      if (combo === 20) bonus = 50;
+      if (bonus > 0) {
+        window.setTimeout(
+          () => addPopup(50, 14, `Combo x${combo}! +${bonus}`, "var(--neon-yellow)"),
+          0,
+        );
+      }
+      return {
+        ...current,
+        combo,
+        maxCombo: Math.max(current.maxCombo, combo),
+        score: current.score + bonus,
+      };
+    },
+    [addPopup],
+  );
+
+  const clickPoint = (event: React.MouseEvent | React.TouchEvent) => {
+    const rect = arenaRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 50, y: 50 };
+    const point = "touches" in event ? (event.changedTouches?.[0] ?? event.touches?.[0]) : event;
+    const clientX = point?.clientX ?? rect.left + rect.width / 2;
+    const clientY = point?.clientY ?? rect.top + rect.height / 2;
     return {
-      ...s,
-      combo: newCombo,
-      maxCombo: Math.max(s.maxCombo, newCombo),
-      score: s.score + bonus,
+      x: ((clientX - rect.left) / rect.width) * 100,
+      y: ((clientY - rect.top) / rect.height) * 100,
+    };
+  };
+
+  const moveHammer = useCallback((clientX: number, clientY: number) => {
+    const rect = arenaRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    pendingHammerPoint.current = {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+
+    if (hammerFrame.current !== null) return;
+
+    hammerFrame.current = window.requestAnimationFrame(() => {
+      hammerFrame.current = null;
+      const { x, y } = pendingHammerPoint.current;
+      if (hammerRef.current) {
+        hammerRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-1.25rem, -1.25rem)`;
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hammerFrame.current !== null) {
+        window.cancelAnimationFrame(hammerFrame.current);
+      }
     };
   }, []);
 
-  // === Click handler ===
-  const handleClick = useCallback((obj: SpawnedObj, ev: React.MouseEvent | React.TouchEvent) => {
-    if (phase !== "playing") return;
-    const rect = arenaRef.current?.getBoundingClientRect();
-    let cx = 50, cy = 50;
-    if (rect) {
-      const clientX = "touches" in ev ? (ev.touches[0]?.clientX ?? ev.changedTouches?.[0]?.clientX ?? 0) : ev.clientX;
-      const clientY = "touches" in ev ? (ev.touches[0]?.clientY ?? ev.changedTouches?.[0]?.clientY ?? 0) : ev.clientY;
-      cx = ((clientX - rect.left) / rect.width) * 100;
-      cy = ((clientY - rect.top) / rect.height) * 100;
-    }
+  const removeObject = (uid: string) => {
+    setObjects((current) =>
+      current.map((item) => (item.uid === uid ? { ...item, exiting: true } : item)),
+    );
+    window.setTimeout(
+      () => setObjects((current) => current.filter((item) => item.uid !== uid)),
+      360,
+    );
+  };
 
-    if (obj.exiting) return;
+  const handleSafeHit = useCallback(
+    (obj: SpawnedObj, x: number, y: number) => {
+      const line =
+        obj.def.id === "backup"
+          ? rnd(WRONG_BACKUP_LINES)
+          : obj.def.id === "customer"
+            ? rnd(WRONG_CUSTOMER_LINES)
+            : rnd(WRONG_DEFENSE_LINES.concat(WRONG_LINES));
 
-    if (obj.def.kind === "boss") {
-      // multi-hit
-      setObjects((arr) => arr.map((o) => o.uid === obj.uid ? { ...o, hp: (o.hp ?? BOSS_MAX_HP) - 1 } : o));
-      const remaining = (obj.hp ?? BOSS_MAX_HP) - 1;
-      if (remaining <= 0) {
-        // boss defeated
-        setObjects((arr) => arr.map((o) => o.uid === obj.uid ? { ...o, exiting: true } : o));
-        setTimeout(() => setObjects((arr) => arr.filter((o) => o.uid !== obj.uid)), 400);
-        setBossActiveOnScreen(null);
-        addPopup(cx, cy, "+25 BOSS HẠ!", "var(--neon-yellow)");
-        setStats((s) => {
-          const newCombo = s.combo + 1;
-          const upd = applyCombo({
-            ...s,
-            score: s.score + 25,
-            correctHits: s.correctHits + 1,
-            totalClicks: s.totalClicks + 1,
-            hits: s.hits + 1,
-            bossDefeats: s.bossDefeats + 1,
-          }, newCombo);
-          roundStatsRef.current.correct++;
-          roundStatsRef.current.totalClicks++;
-          roundStatsRef.current.maxCombo = Math.max(roundStatsRef.current.maxCombo, newCombo);
-          return upd;
-        });
-      } else {
-        addPopup(cx, cy, `BOSS HP ${remaining}/${BOSS_MAX_HP}`, "var(--neon-red)");
-        setStats((s) => ({ ...s, totalClicks: s.totalClicks + 1, correctHits: s.correctHits + 1 }));
-        roundStatsRef.current.totalClicks++;
-        roundStatsRef.current.correct++;
-      }
-      return;
-    }
-
-    if (obj.def.kind === "danger") {
-      setObjects((arr) => arr.map((o) => o.uid === obj.uid ? { ...o, exiting: true } : o));
-      setTimeout(() => setObjects((arr) => arr.filter((o) => o.uid !== obj.uid)), 400);
-      addPopup(cx, cy, "+10 " + rnd(CORRECT_LINES), "var(--neon-green)");
-      setStats((s) => {
-        const newCombo = s.combo + 1;
-        const upd = applyCombo({
-          ...s,
-          score: s.score + 10,
-          correctHits: s.correctHits + 1,
-          totalClicks: s.totalClicks + 1,
-          hits: s.hits + 1,
-          dataLocked: Math.max(0, s.dataLocked - 1),
-        }, newCombo);
-        roundStatsRef.current.correct++;
-        roundStatsRef.current.totalClicks++;
-        roundStatsRef.current.maxCombo = Math.max(roundStatsRef.current.maxCombo, newCombo);
-        return upd;
-      });
-    } else {
-      // safe
-      setObjects((arr) => arr.map((o) => o.uid === obj.uid ? { ...o, exiting: true } : o));
-      setTimeout(() => setObjects((arr) => arr.filter((o) => o.uid !== obj.uid)), 400);
-      addPopup(cx, cy, "-15 " + rnd(WRONG_LINES), "var(--neon-red)");
+      addPopup(x, y, `-15 ${line}`, "var(--neon-red)");
       setShake(true);
-      setTimeout(() => setShake(false), 400);
-      setStats((s) => {
-        const next = { ...s, score: Math.max(0, s.score - 15), combo: 0, totalClicks: s.totalClicks + 1, misses: s.misses + 1 };
-        if (obj.def.id === "backup") next.backupHealth = Math.max(0, s.backupHealth - 12);
-        if (obj.def.id === "customer") next.customerTrust = Math.max(0, s.customerTrust - 12);
-        if (obj.def.id === "cleandb") next.backupHealth = Math.max(0, s.backupHealth - 8);
+      window.setTimeout(() => setShake(false), 360);
+
+      updateStats((current) => {
+        const backupHits = current.backupHits + (obj.def.id === "backup" ? 1 : 0);
+        const next: GameStats = {
+          ...current,
+          score: Math.max(0, current.score - 15),
+          combo: 0,
+          totalClicks: current.totalClicks + 1,
+          misses: current.misses + 1,
+          backupHits,
+        };
+
+        if (obj.def.id === "backup") next.backupHealth = clampMetric(current.backupHealth - 12);
+        if (obj.def.id === "customer") next.customerTrust = clampMetric(current.customerTrust - 12);
+        if (obj.def.id === "cleandb") next.backupHealth = clampMetric(current.backupHealth - 8);
+        if (["mfa", "firewall", "shield", "itteam", "safesys"].includes(obj.def.id)) {
+          next.customerTrust = clampMetric(current.customerTrust - 4);
+        }
+
+        if (backupHits === 2) {
+          window.setTimeout(() => {
+            addPopup(
+              50,
+              50,
+              "Backup bay màu. Giờ cả công ty chỉ còn hy vọng và file Excel tên 'Dữ liệu tạm thời'.",
+              "var(--neon-yellow)",
+            );
+          }, 40);
+        }
+
         return next;
       });
-      roundStatsRef.current.totalClicks++;
-      roundStatsRef.current.safeHits++;
-    }
-  }, [phase, addPopup, applyCombo]);
 
-  // Click on empty arena → no-op (no penalty), but visual ripple? skip.
+      roundStatsRef.current.totalClicks += 1;
+      roundStatsRef.current.safeHits += 1;
+    },
+    [addPopup, updateStats],
+  );
 
-  // === Spawner ===
-  useEffect(() => {
-    if (phase !== "playing") return;
-    let cancelled = false;
-    let bossSpawnedThisRound = !round.bossActive;
+  const handleClick = useCallback(
+    (obj: SpawnedObj, event: React.MouseEvent | React.TouchEvent) => {
+      if (phase !== "playing" || obj.exiting) return;
+      const { x, y } = clickPoint(event);
 
-    const spawn = () => {
-      if (cancelled) return;
-      setObjects((curr) => {
-        if (curr.length > 8) return curr;
-        const isSafe = Math.random() < round.safeRatio;
-        let def: ObjectDef;
-        let isBoss = false;
-        if (round.bossActive && !bossSpawnedThisRound && Math.random() < 0.35 && !curr.some((o) => o.def.kind === "boss")) {
-          def = BOSS;
-          isBoss = true;
-        } else if (round.bossActive && Math.random() < 0.15 && !curr.some((o) => o.def.kind === "boss")) {
-          def = BOSS;
-          isBoss = true;
-        } else {
-          def = isSafe ? rnd(SAFE) : rnd(DANGEROUS);
-        }
-        const x = 8 + Math.random() * 84;
-        const y = 10 + Math.random() * 78;
-        const obj: SpawnedObj = {
-          uid: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          def,
-          x, y,
-          born: Date.now(),
-          lifetime: isBoss ? round.lifetimeMs + 800 : round.lifetimeMs,
-          hp: isBoss ? BOSS_MAX_HP : undefined,
-        };
-        if (isBoss) {
-          bossSpawnedThisRound = true;
-          // allow next boss spawn after delay
-          setTimeout(() => { bossSpawnedThisRound = false; }, 4000);
-          setBossActiveOnScreen(obj);
-        }
-        return [...curr, obj];
-      });
+      setHammer((current) => ({ ...current, bonk: true }));
+      window.setTimeout(() => setHammer((current) => ({ ...current, bonk: false })), 150);
+
+      removeObject(obj.uid);
+
+      if (obj.def.kind === "danger") {
+        addPopup(x, y, `+10 ${rnd(CORRECT_LINES)}`, "var(--neon-green)");
+        updateStats((current) => {
+          const combo = current.combo + 1;
+          const next = applyCombo(
+            {
+              ...current,
+              score: current.score + 10,
+              correctHits: current.correctHits + 1,
+              totalClicks: current.totalClicks + 1,
+              hits: current.hits + 1,
+              dataLocked: clampMetric(current.dataLocked - 1),
+            },
+            combo,
+          );
+          roundStatsRef.current.correct += 1;
+          roundStatsRef.current.totalClicks += 1;
+          roundStatsRef.current.maxCombo = Math.max(roundStatsRef.current.maxCombo, combo);
+          return next;
+        });
+      } else {
+        handleSafeHit(obj, x, y);
+      }
+    },
+    [applyCombo, handleSafeHit, phase, updateStats, addPopup],
+  );
+
+  const completeRound = useCallback(() => {
+    setObjects([]);
+    const roundStats = roundStatsRef.current;
+    const finalAccuracy =
+      roundStats.totalClicks > 0
+        ? Math.round((roundStats.correct / roundStats.totalClicks) * 100)
+        : 0;
+    const finalStats = {
+      ...statsRef.current,
+      finalRoundAccuracy: finalAccuracy,
+      finalRoundMaxCombo: roundStats.maxCombo,
+      finalRoundSafeHits: roundStats.safeHits,
     };
 
-    const id = setInterval(spawn, round.spawnMs);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [phase, round]);
+    statsRef.current = finalStats;
+    setStats(finalStats);
+    setPhase("ended");
+    onEnd({ stats: finalStats });
+  }, [onEnd]);
 
-  // === Expiry sweeper ===
   useEffect(() => {
     if (phase !== "playing") return;
-    const id = setInterval(() => {
-      const now = Date.now();
-      setObjects((curr) => {
-        const expired = curr.filter((o) => !o.exiting && now - o.born > o.lifetime);
-        if (expired.length === 0) return curr;
-        // penalize missed dangers (not boss, not safe)
-        let dangerMissed = 0;
-        for (const o of expired) {
-          if (o.def.kind === "danger") dangerMissed++;
-          if (o.def.kind === "boss") setBossActiveOnScreen(null);
-        }
-        if (dangerMissed > 0) {
-          setStats((s) => ({
-            ...s,
-            score: Math.max(0, s.score - 5 * dangerMissed),
-            dataLocked: Math.min(100, s.dataLocked + 4 * dangerMissed),
-            misses: s.misses + dangerMissed,
-          }));
-        }
-        return curr.filter((o) => now - o.born <= o.lifetime);
-      });
-    }, 200);
-    return () => clearInterval(id);
-  }, [phase]);
-
-  // === Timer ===
-  useEffect(() => {
-    if (phase !== "playing") return;
-    const id = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          clearInterval(id);
-          endRound();
+    const id = window.setInterval(() => {
+      setTimeLeft((current) => {
+        if (current <= 1) {
+          window.clearInterval(id);
+          completeRound();
           return 0;
         }
-        return t - 1;
+        return current - 1;
       });
     }, 1000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, roundIdx]);
+    return () => window.clearInterval(id);
+  }, [completeRound, phase]);
 
-  const endRound = useCallback(() => {
-    setObjects([]);
-    setBossActiveOnScreen(null);
-    // capture final round metrics for boss qualification
-    if (round.bossActive) {
-      const r = roundStatsRef.current;
-      const acc = r.totalClicks > 0 ? Math.round((r.correct / r.totalClicks) * 100) : 0;
-      setStats((s) => ({
-        ...s,
-        finalRoundAccuracy: acc,
-        finalRoundMaxCombo: r.maxCombo,
-        finalRoundSafeHits: r.safeHits,
-      }));
-    }
-    const next = roundIdx + 1;
-    if (next >= ROUNDS.length) {
-      setPhase("ended");
-    } else {
-      setPhase("between");
-    }
-  }, [roundIdx, round.bossActive]);
-
-  // when ended, emit result
   useEffect(() => {
-    if (phase !== "ended") return;
-    const qualifies =
-      stats.finalRoundAccuracy >= 95 &&
-      stats.finalRoundSafeHits === 0 &&
-      stats.finalRoundMaxCombo >= 20 &&
-      stats.bossDefeats >= 3 &&
-      stats.backupHealth >= 80 &&
-      stats.customerTrust >= 80;
-    onEnd({ stats, qualifiesPrize: qualifies });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+    if (phase !== "playing") return;
+    const id = window.setInterval(() => {
+      setObjects((current) => {
+        if (current.length >= difficulty.maxObjects) return current;
+        const now = Date.now();
+        const isSafe = Math.random() < difficulty.safeRatio;
+        const def = isSafe ? rnd(SAFE) : rnd(DANGEROUS);
+        return [
+          ...current,
+          {
+            uid: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+            def,
+            x: 8 + Math.random() * 84,
+            y: 12 + Math.random() * 74,
+            born: now,
+            lifetime: difficulty.lifetimeMs,
+          },
+        ];
+      });
+    }, difficulty.spawnMs);
+
+    return () => window.clearInterval(id);
+  }, [difficulty, phase]);
+
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      setObjects((current) => {
+        const expired = current.filter((item) => !item.exiting && now - item.born > item.lifetime);
+        if (expired.length === 0) return current;
+        const missed = expired.filter((item) => item.def.kind === "danger").length;
+        if (missed > 0) {
+          updateStats((stat) => ({
+            ...stat,
+            score: Math.max(0, stat.score - 5 * missed),
+            dataLocked: clampMetric(stat.dataLocked + 4 * missed),
+            misses: stat.misses + missed,
+            combo: 0,
+          }));
+          addPopup(50, 18, `-${5 * missed} Mối nguy lọt lưới!`, "var(--neon-red)");
+        }
+        return current.filter((item) => now - item.born <= item.lifetime);
+      });
+    }, 180);
+    return () => window.clearInterval(id);
+  }, [addPopup, phase, updateStats]);
 
   const startRound = () => {
     roundStatsRef.current = { correct: 0, totalClicks: 0, safeHits: 0, maxCombo: 0 };
     setTimeLeft(round.duration);
+    setObjects([]);
     setPhase("playing");
-  };
-
-  const goNextRound = () => {
-    setRoundIdx((i) => i + 1);
-    setPhase("intro");
   };
 
   useEffect(() => {
     setTimeLeft(round.duration);
-  }, [round]);
+  }, [round.duration]);
+
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const id = window.setInterval(() => {
+      if (Math.random() < 0.35) addPopup(50, 85, rnd(RANDOM_LINES), "var(--neon-cyan)");
+    }, 5500);
+    return () => window.clearInterval(id);
+  }, [addPopup, phase]);
+
+  const legendaryHammer = difficultyStage >= 2 || stats.combo >= 10;
 
   return (
-    <div className={`relative min-h-screen cyber-grid p-3 sm:p-5 ${shake ? "shake" : ""}`}>
+    <main className={`relative min-h-screen cyber-grid p-3 sm:p-5 ${shake ? "shake" : ""}`}>
       <HUD
         playerName={player.name}
         score={stats.score}
@@ -341,183 +410,177 @@ export function Game({ player, onEnd, onExit }: { player: Player; onEnd: (r: End
         backupHealth={stats.backupHealth}
         customerTrust={stats.customerTrust}
         timeLeft={timeLeft}
+        difficultyLabel={difficulty.label}
       />
 
-      {/* Arena */}
       <div
         ref={arenaRef}
-        className="relative mt-4 h-[60vh] min-h-[420px] w-full overflow-hidden rounded-2xl glass-panel neon-border-cyan"
-        onClick={(e) => {
-          if (phase !== "playing") return;
-          // arena background click (missed)
-          if ((e.target as HTMLElement).dataset.arena === "bg") {
-            // no penalty for empty click; keep combo as-is to be forgiving
-          }
+        onMouseEnter={(event) => {
+          moveHammer(event.clientX, event.clientY);
+          setHammer((current) => ({ ...current, visible: true }));
         }}
+        onMouseLeave={() => setHammer((current) => ({ ...current, visible: false }))}
+        onMouseMove={(event) => {
+          moveHammer(event.clientX, event.clientY);
+          setHammer((current) => (current.visible ? current : { ...current, visible: true }));
+        }}
+        onTouchStart={() => setHammer((current) => ({ ...current, touch: true, visible: false }))}
+        className={`relative mt-4 h-[62vh] min-h-[430px] w-full overflow-hidden rounded-2xl glass-panel neon-border-cyan ${hammer.touch ? "" : "cursor-none"}`}
       >
-        <div data-arena="bg" className="absolute inset-0" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,oklch(0.45_0.16_200/0.18),transparent_36%)]" />
 
-        {/* combo overlay */}
-        {stats.combo >= 5 && phase === "playing" && (
-          <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 text-center">
-            <div className="neon-text-yellow text-3xl sm:text-5xl font-black tracking-wider pulse-glow">
+        {stats.combo >= 5 && phase === "playing" ? (
+          <div className="pointer-events-none absolute left-1/2 top-4 z-20 -translate-x-1/2 text-center">
+            <div className="neon-text-yellow pulse-glow text-3xl font-black tracking-wider sm:text-5xl">
               COMBO x{stats.combo}
             </div>
-            {stats.combo >= 10 && (
-              <div className="mt-1 text-xs sm:text-sm neon-text-green">
-                PHÒNG IT ĐANG TIN BẠN HƠN
+            {stats.combo >= 10 ? (
+              <div className="mt-1 text-sm font-bold neon-text-green">
+                Phòng IT đang xem bạn như siêu anh hùng.
               </div>
-            )}
+            ) : null}
           </div>
-        )}
+        ) : null}
 
-        {/* boss hp bar */}
-        {bossActiveOnScreen && (
-          <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 sm:top-20 w-64">
-            <div className="text-center text-xs font-bold neon-text-red mb-1 flex items-center justify-center gap-1">
-              <Skull className="h-4 w-4" /> RANSOMWARE BOSS
-            </div>
-            <div className="h-2.5 rounded-full bg-black/60 overflow-hidden border border-[var(--neon-red)]/50">
-              <div
-                className="h-full transition-all"
-                style={{
-                  width: `${((bossActiveOnScreen.hp ?? BOSS_MAX_HP) / BOSS_MAX_HP) * 100}%`,
-                  background: "var(--neon-red)",
-                  boxShadow: "0 0 12px var(--neon-red)",
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Objects */}
-        {objects.map((o) => {
-          const c = colorMap[o.def.color];
-          const isBoss = o.def.kind === "boss";
-          const size = isBoss ? 130 : 88;
+        {objects.map((item) => {
+          const color = colorMap[item.def.color];
+          const size = 92;
           return (
             <button
-              key={o.uid}
-              onClick={(e) => { e.stopPropagation(); handleClick(o, e); }}
-              onTouchStart={(e) => { e.stopPropagation(); }}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 select-none ${o.exiting ? "explode" : "pop-in"}`}
-              style={{ left: `${o.x}%`, top: `${o.y}%`, width: size, height: size }}
+              key={item.uid}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleClick(item, event);
+              }}
+              onTouchStart={(event) => event.stopPropagation()}
+              className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 select-none rounded-2xl focus:outline-none focus:ring-2 focus:ring-[var(--neon-cyan)] ${item.exiting ? "explode" : "pop-in"}`}
+              style={{ left: `${item.x}%`, top: `${item.y}%`, width: size, height: size }}
+              aria-label={item.def.label}
             >
-              <div
-                className={`relative flex h-full w-full flex-col items-center justify-center rounded-2xl bg-gradient-to-br ${c.chip} pulse-glow`}
-                style={{ boxShadow: `0 0 24px ${c.glow}, inset 0 0 20px ${c.glow}40`, color: c.glow }}
+              <span
+                className={`relative flex h-full w-full flex-col items-center justify-center rounded-2xl bg-gradient-to-br ${color.chip} pulse-glow`}
+                style={{
+                  color: color.glow,
+                  boxShadow: `0 0 24px ${color.glow}, inset 0 0 20px ${color.glow}40`,
+                }}
               >
-                <GameIcon name={o.def.icon} className={isBoss ? "h-16 w-16" : "h-10 w-10"} />
-                <div className="mt-1 px-1 text-center text-[10px] sm:text-xs font-bold leading-tight text-white drop-shadow">
-                  {o.def.label}
-                </div>
-              </div>
+                <GameIcon name={item.def.icon} className="h-10 w-10" />
+                <span className="mt-1 px-1 text-center text-[10px] font-black leading-tight text-white drop-shadow sm:text-xs">
+                  {item.def.label}
+                </span>
+              </span>
             </button>
           );
         })}
 
-        {/* Floating popups */}
-        {popups.map((p) => (
+        {popups.map((popup) => (
           <div
-            key={p.id}
-            className="pointer-events-none absolute float-up text-sm sm:text-base font-extrabold whitespace-nowrap"
-            style={{ left: `${p.x}%`, top: `${p.y}%`, color: p.color, textShadow: `0 0 8px ${p.color}` }}
+            key={popup.id}
+            className="pointer-events-none absolute z-30 max-w-[min(86vw,760px)] -translate-x-1/2 float-up whitespace-normal text-center text-sm font-black leading-5 sm:text-base"
+            style={{
+              left: `${popup.x}%`,
+              top: `${popup.y}%`,
+              color: popup.color,
+              textShadow: `0 0 10px ${popup.color}`,
+            }}
           >
-            {p.text}
+            {popup.text}
           </div>
         ))}
 
-        {/* Intro / Pause / Between overlays */}
-        {(phase === "intro" || phase === "paused" || phase === "between") && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[oklch(0.1_0.03_265/0.85)] backdrop-blur-sm p-4">
-            <div className="glass-panel neon-border-cyan max-w-xl rounded-2xl p-6 sm:p-8 text-center">
-              {phase === "between" ? (
-                <BetweenPanel
-                  finishedRound={ROUNDS[roundIdx]}
-                  nextRound={ROUNDS[roundIdx + 1]}
-                  onNext={goNextRound}
-                />
-              ) : (
-                <IntroPanel round={round} onStart={startRound} resumed={phase === "paused"} />
-              )}
+        {!hammer.touch && hammer.visible ? (
+          <div
+            ref={hammerRef}
+            className="pointer-events-none absolute left-0 top-0 z-40 will-change-transform"
+            style={{ transform: "translate3d(-120px, -120px, 0) translate(-1.25rem, -1.25rem)" }}
+          >
+            <div
+              className={`flex h-14 w-14 rotate-[-20deg] items-center justify-center rounded-xl border bg-black/70 ${hammer.bonk ? "hammer-bonk" : ""} ${legendaryHammer ? "border-[var(--neon-yellow)] text-[var(--neon-yellow)]" : "border-[var(--neon-cyan)] text-[var(--neon-cyan)]"}`}
+            >
+              <Hammer className="h-9 w-9" />
+            </div>
+            <div className="mt-1 whitespace-nowrap rounded-full bg-black/70 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+              {legendaryHammer ? "Legendary SOC Hammer" : "SOC Hammer 3000"}
             </div>
           </div>
-        )}
+        ) : null}
+
+        {phase === "intro" || phase === "paused" ? (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-[oklch(0.1_0.03_265/0.86)] p-4 backdrop-blur-sm">
+            <div className="glass-panel neon-border-cyan max-w-2xl rounded-2xl p-6 text-center sm:p-8">
+              <IntroPanel
+                round={round}
+                resumed={phase === "paused"}
+                onStart={phase === "paused" ? () => setPhase("playing") : startRound}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {/* Footer */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="text-xs uppercase tracking-wider text-muted-foreground">Vòng {round.id}/{ROUNDS.length}</span>
-          <span className="text-sm font-bold neon-text-cyan">{round.title}</span>
+        <div>
+          <div className="text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">
+            Vòng 1/1 - Độ khó: {difficulty.label}
+          </div>
+          <div className="mt-1 text-base font-black neon-text-cyan">{round.title}</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Công cụ của bạn: SOC Hammer 3000 - đập virus, né backup.
+          </div>
         </div>
         <div className="flex gap-2">
-          {phase === "playing" && (
+          {phase === "playing" ? (
             <Button variant="outline" size="sm" onClick={() => setPhase("paused")}>
-              <Pause className="mr-1 h-4 w-4" /> Tạm dừng
+              <Pause className="mr-1 h-4 w-4" />
+              Tạm dừng
             </Button>
-          )}
-          {phase === "paused" && (
+          ) : null}
+          {phase === "paused" ? (
             <Button size="sm" onClick={() => setPhase("playing")}>
-              <Play className="mr-1 h-4 w-4" /> Tiếp tục
+              <Play className="mr-1 h-4 w-4" />
+              Tiếp tục
             </Button>
-          )}
-          <Button variant="ghost" size="sm" onClick={onExit}>Thoát</Button>
+          ) : null}
+          <Button variant="ghost" size="sm" onClick={onExit}>
+            Thoát
+          </Button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
-function IntroPanel({ round, onStart, resumed }: { round: RoundConfig; onStart: () => void; resumed?: boolean }) {
+function IntroPanel({
+  round,
+  onStart,
+  resumed,
+}: {
+  round: RoundConfig;
+  onStart: () => void;
+  resumed?: boolean;
+}) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-[0.3em] text-[var(--neon-cyan)]">Vòng {round.id}</div>
-      <h2 className="mt-2 text-3xl sm:text-4xl font-black neon-text-cyan">{round.title}</h2>
-      <p className="mt-3 text-base text-foreground/90">{round.intro}</p>
-      {round.bossActive && (
-        <div className="mt-4 rounded-xl bg-[oklch(0.25_0.1_25/0.4)] p-4 text-left text-sm">
-          <div className="font-bold neon-text-yellow mb-2 flex items-center gap-2">
-            <Trophy className="h-4 w-4" /> Điều kiện giành iPhone 17 Pro Max
-          </div>
-          <ul className="space-y-1 text-foreground/90">
-            <li>• Chính xác ≥ 95% trong vòng cuối</li>
-            <li>• Không đập trúng bất kỳ vật bảo vệ nào</li>
-            <li>• Đạt combo ≥ 20</li>
-            <li>• Hạ Ransomware Boss ≥ 3 lần</li>
-            <li>• Backup ≥ 80% & Niềm tin khách hàng ≥ 80%</li>
-          </ul>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Rất khó nhưng hoàn toàn công bằng. Giải đặc biệt theo thể lệ công khai của BTC.
-          </p>
-        </div>
-      )}
+      <div className="text-xs font-black uppercase tracking-[0.3em] text-[var(--neon-cyan)]">
+        Vòng {round.id}
+      </div>
+      <h2 className="mt-2 text-3xl font-black neon-text-cyan sm:text-4xl">{round.title}</h2>
+      <p className="mt-3 text-base font-semibold text-foreground/90">{round.intro}</p>
+      {round.hint ? (
+        <p className="mt-2 text-sm font-bold text-[var(--neon-yellow)]">{round.hint}</p>
+      ) : null}
+
+      <div className="mt-5 rounded-xl bg-[oklch(0.24_0.1_200/0.38)] p-4 text-left text-sm font-semibold text-foreground/90">
+        Một vòng duy nhất trong 30 giây. Từ giây 10 và giây 20, vật thể xuất hiện nhanh hơn, tồn tại
+        ngắn hơn và dễ lẫn mục tiêu an toàn hơn.
+      </div>
+
       <Button
         onClick={onStart}
-        className="mt-6 h-12 px-8 text-lg font-bold bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-green)] text-[oklch(0.15_0.04_265)]"
+        className="mt-6 h-12 px-8 text-lg font-black bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-green)] text-[oklch(0.14_0.04_265)]"
       >
-        <Play className="mr-2 h-5 w-5" /> {resumed ? "Tiếp tục" : "Bắt đầu"}
-      </Button>
-    </div>
-  );
-}
-
-function BetweenPanel({ finishedRound, nextRound, onNext }: { finishedRound: RoundConfig; nextRound: RoundConfig; onNext: () => void }) {
-  return (
-    <div>
-      <div className="text-xs uppercase tracking-[0.3em] text-[var(--neon-green)]">Hoàn tất</div>
-      <h2 className="mt-2 text-2xl sm:text-3xl font-black neon-text-green">{finishedRound.title}</h2>
-      <p className="mt-3 text-foreground/90">{rnd(BOSS_LINES.concat(CORRECT_LINES))}</p>
-      <div className="mt-5 rounded-xl bg-[oklch(0.25_0.1_200/0.3)] p-4 text-left">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground">Vòng tiếp theo</div>
-        <div className="mt-1 text-lg font-bold neon-text-cyan">{nextRound.title}</div>
-        <div className="mt-1 text-sm text-foreground/80">{nextRound.intro}</div>
-      </div>
-      <Button
-        onClick={onNext}
-        className="mt-6 h-12 px-8 text-lg font-bold bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-purple)] text-white"
-      >
-        Sang vòng kế tiếp <ChevronRight className="ml-2 h-5 w-5" />
+        <Play className="mr-2 h-5 w-5" />
+        {resumed ? "Tiếp tục" : "Bắt đầu"}
       </Button>
     </div>
   );

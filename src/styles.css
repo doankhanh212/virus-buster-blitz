@@ -204,6 +204,12 @@
     100% { transform: translate(-50%, -80px) scale(1); opacity: 0; }
   }
   .float-up { animation: float-up 1s ease-out forwards; }
+  @keyframes hammer-bonk {
+    0% { transform: rotate(-20deg) scale(1); }
+    45% { transform: rotate(18deg) scale(0.9); }
+    100% { transform: rotate(-20deg) scale(1); }
+  }
+  .hammer-bonk { animation: hammer-bonk 150ms ease-out; transform-origin: 80% 80%; }
   @keyframes scan {
     0% { transform: translateY(-100%); }
     100% { transform: translateY(100vh); }
