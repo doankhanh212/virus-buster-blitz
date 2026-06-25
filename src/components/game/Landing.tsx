@@ -4,11 +4,13 @@ import {
   Bug,
   Clock,
   DatabaseBackup,
+  LockKeyhole,
   Shield,
   Sparkles,
-  Target,
   Zap,
 } from "lucide-react";
+import { Leaderboard } from "./Leaderboard";
+import { sound } from "@/lib/game/sound";
 
 export function Landing({ onStart }: { onStart: () => void }) {
   return (
@@ -23,14 +25,14 @@ export function Landing({ onStart }: { onStart: () => void }) {
           </div>
           <div className="hidden items-center gap-2 rounded-full border border-[var(--neon-yellow)]/40 px-4 py-2 text-sm font-bold text-[var(--neon-yellow)] sm:flex">
             <Clock className="h-4 w-4" />
-            30 giây thử thách
+            60 giây thử thách
           </div>
         </header>
 
         <div className="grid flex-1 items-center gap-8 py-8 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="max-w-4xl">
             <p className="text-sm font-black uppercase tracking-[0.32em] text-[var(--neon-green)]">
-              30 giây sinh tồn
+              60 giây sinh tồn
             </p>
             <h1 className="mt-4 text-5xl font-black leading-[1.03] sm:text-7xl lg:text-8xl">
               <span className="neon-text-cyan">Đập Virus</span>
@@ -38,7 +40,7 @@ export function Landing({ onStart }: { onStart: () => void }) {
               <span className="neon-text-green">Cứu Công Ty</span>
             </h1>
             <p className="mt-5 max-w-3xl text-xl font-semibold text-foreground/90 sm:text-2xl">
-              30 giây sinh tồn - Đập virus, cứu công ty, đừng đập nhầm backup!
+              60 giây sinh tồn - Đập virus, cứu công ty, đừng đập nhầm backup!
             </p>
             <p className="mt-5 max-w-3xl text-base leading-8 text-muted-foreground sm:text-lg">
               Ransomware là virus khóa dữ liệu và đòi tiền chuộc. Trong game này, bạn sẽ đập đúng
@@ -50,7 +52,10 @@ export function Landing({ onStart }: { onStart: () => void }) {
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button
-                onClick={onStart}
+                onClick={() => {
+                  sound.uiClick();
+                  onStart();
+                }}
                 className="h-14 px-8 text-lg font-black bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-green)] text-[oklch(0.14_0.04_265)] shadow-[0_0_32px_oklch(0.82_0.2_195/0.45)]"
               >
                 Bắt đầu ngay
@@ -87,9 +92,9 @@ export function Landing({ onStart }: { onStart: () => void }) {
             />
             <VisualNode
               className="right-[14%] bottom-[12%]"
-              tone="purple"
-              icon={<Target className="h-11 w-11" />}
-              label="Độ khó tăng dần"
+              tone="red"
+              icon={<LockKeyhole className="h-11 w-11" />}
+              label="Ransomware mỗi 10s"
             />
             <div className="absolute left-1/2 top-1/2 flex h-44 w-44 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border border-[var(--neon-yellow)]/60 bg-black/55 text-center shadow-[0_0_40px_oklch(0.92_0.18_95/0.28)]">
               <Zap className="h-14 w-14 text-[var(--neon-yellow)]" />
@@ -99,6 +104,10 @@ export function Landing({ onStart }: { onStart: () => void }) {
               <div className="mt-1 text-xs text-muted-foreground">đập virus, né backup</div>
             </div>
           </div>
+        </div>
+
+        <div className="pb-8">
+          <Leaderboard limit={5} compact />
         </div>
       </section>
     </main>

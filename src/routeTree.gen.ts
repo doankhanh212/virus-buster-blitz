@@ -9,8 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as NoiBoRouteImport } from './routes/noi-bo'
 import { Route as IndexRouteImport } from './routes/index'
 
+const NoiBoRoute = NoiBoRouteImport.update({
+  id: '/noi-bo',
+  path: '/noi-bo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +25,39 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/noi-bo': typeof NoiBoRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/noi-bo': typeof NoiBoRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/noi-bo': typeof NoiBoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/noi-bo'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/noi-bo'
+  id: '__root__' | '/' | '/noi-bo'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  NoiBoRoute: typeof NoiBoRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/noi-bo': {
+      id: '/noi-bo'
+      path: '/noi-bo'
+      fullPath: '/noi-bo'
+      preLoaderRoute: typeof NoiBoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,6 +70,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  NoiBoRoute: NoiBoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

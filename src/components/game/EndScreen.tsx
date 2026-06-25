@@ -1,5 +1,8 @@
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import type { GameStats, Player } from "@/lib/game/types";
+import { Leaderboard } from "./Leaderboard";
+import { sound } from "@/lib/game/sound";
 import { Award, Bug, Home, RotateCcw, Shield, Skull, Target } from "lucide-react";
 
 interface BadgeDef {
@@ -15,7 +18,7 @@ const BADGES: BadgeDef[] = [
   {
     id: "excellent",
     title: "Excellent Defender",
-    desc: "Một vòng 30 giây rất sạch: chính xác cao, combo đẹp, hệ thống vẫn ổn.",
+    desc: "Một vòng 60 giây rất sạch: chính xác cao, combo đẹp, hệ thống vẫn ổn.",
     match: (stats) =>
       stats.finalRoundAccuracy >= 90 && stats.backupHealth >= 80 && stats.customerTrust >= 80,
     color: "yellow",
@@ -47,7 +50,7 @@ const BADGES: BadgeDef[] = [
   },
   {
     id: "fast",
-    title: "Tay Nhanh Hơn Não",
+    title: "Vua tốc độ",
     desc: "Click rất nhiệt tình, nhưng hơi sai mục tiêu.",
     match: (stats) => stats.misses >= 12,
     color: "red",
@@ -66,11 +69,13 @@ const BADGES: BadgeDef[] = [
 export function EndScreen({
   player,
   stats,
+  highlightId,
   onReplay,
   onHome,
 }: {
   player: Player;
   stats: GameStats;
+  highlightId?: string;
   onReplay: () => void;
   onHome: () => void;
 }) {
@@ -84,15 +89,19 @@ export function EndScreen({
       : accuracy >= 85
         ? "Excellent Defender"
         : "SOC Trainee";
+
+  useEffect(() => {
+    sound.gameOver(primaryBadge !== "Business Critical Failure");
+  }, [primaryBadge]);
   const title =
     primaryBadge === "Business Critical Failure"
       ? "Công ty chính thức bay màu."
       : accuracy >= 85
-        ? "Bạn đã giữ công ty sống sót qua 30 giây."
+        ? "Bạn đã giữ công ty sống sót qua 60 giây."
         : "Công ty sống sót, nhưng phòng IT hơi hồi hộp.";
   const message =
     primaryBadge === "Business Critical Failure"
-      ? "Badge: Tay nhanh hơn não. Phòng IT đang chuẩn bị CV mới."
+      ? "Badge: Click rất nhiệt tình. Phòng IT đang chuẩn bị CV mới."
       : "Bạn chơi tốt, nhưng vẫn còn vài pha nhầm backup hơi đau lòng.";
 
   return (
@@ -164,6 +173,10 @@ export function EndScreen({
             )}
           </div>
         </section>
+
+        <div className="mt-8">
+          <Leaderboard limit={10} highlightId={highlightId} />
+        </div>
 
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Button

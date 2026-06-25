@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { sound } from "@/lib/game/sound";
 import { CheckCircle2, ChevronRight, HelpCircle, XCircle } from "lucide-react";
 
 interface QuizQuestion {
@@ -17,59 +18,38 @@ const QUESTIONS: QuizQuestion[] = [
       "Bán cơm sườn văn phòng",
       "Bán quần áo công sở",
       "Giải pháp công nghệ, hạ tầng CNTT, cloud và bảo mật",
-      "Mở lớp dạy nhảy TikTok cho server",
+      "Mở lớp dạy nhảy TikTok",
     ],
     correct: 2,
-    correctFeedback: "Chuẩn! HQG không bán cơm sườn. HQG làm giải pháp công nghệ cho doanh nghiệp.",
-    wrongFeedback: "Nghe cũng hấp dẫn, nhưng chưa đúng. HQG làm công nghệ chứ chưa mở chi nhánh cơm sườn.",
+    correctFeedback: "Chuẩn! HQG không bán cơm sườn, HQG xây giải pháp công nghệ cho doanh nghiệp.",
+    wrongFeedback:
+      "Nghe cũng hấp dẫn, nhưng chưa đúng. HQG làm giải pháp công nghệ, hạ tầng CNTT, cloud, bảo mật và dịch vụ kỹ thuật.",
   },
   {
-    title: "Khi dữ liệu công ty 'bay màu', chuyên môn nào của HQG phát huy tác dụng nhất?",
+    title: "Nếu doanh nghiệp bị mất dữ liệu hoặc hệ thống ngưng chạy, HQG có thể hỗ trợ mảng nào?",
     options: [
-      "Sao lưu & phục hồi dữ liệu, bảo vệ hệ thống",
-      "Gọi điện an ủi File Server",
-      "Dán bùa 'đừng bị mã hóa' lên máy chủ",
-      "Mở nhạc chữa lành cho phòng IT",
+      "Sao lưu, phục hồi dữ liệu và bảo vệ hệ thống",
+      "Pha cà phê động viên phòng IT",
+      "Chọn nhạc nền cho server ngủ ngon",
+      "Bán decal 'Đừng click linh tinh'",
     ],
     correct: 0,
-    correctFeedback: "Chuẩn! Khi dữ liệu gặp sự cố, thứ cứu công ty là sao lưu, phục hồi và bảo vệ dữ liệu đúng cách.",
-    wrongFeedback: "Nghe vui đó, nhưng File Server không hồi sinh bằng lời động viên.",
+    correctFeedback: "Đúng rồi! Dữ liệu không tự sống lại, cần có sao lưu, phục hồi và kế hoạch bảo vệ dữ liệu.",
+    wrongFeedback:
+      "Ý tưởng vui đó, nhưng khi hệ thống gặp sự cố, doanh nghiệp cần sao lưu, phục hồi và đội kỹ thuật xử lý thật.",
   },
   {
     title: "HQG đã hoạt động trong lĩnh vực công nghệ khoảng bao lâu?",
     options: [
-      "Mới mở hôm qua, router còn chưa kịp phát Wi-Fi",
+      "Mới mở hôm qua",
       "Hơn 15 năm",
-      "Từ thời USB cắm sai chiều là bài kiểm tra nhân phẩm",
-      "Từ thời máy in kẹt giấy làm cả phòng kế toán im lặng",
+      "Thời kỳ đồ đá",
+      "Đang bán cơm sườn, mai mở",
     ],
     correct: 1,
-    correctFeedback: "Chính xác! HQG đã có hơn 15 năm đồng hành cùng doanh nghiệp.",
-    wrongFeedback: "Sai nhưng rất có kỷ niệm. Đáp án đúng là hơn 15 năm.",
-  },
-  {
-    title: "Nếu doanh nghiệp cần hạ tầng CNTT ổn định, HQG thường gắn với nhóm nào sau đây?",
-    options: [
-      "Máy chủ, lưu trữ, mạng, cloud",
-      "Bàn ghế văn phòng, cây cảnh và bình nước nóng lạnh",
-      "Dịch vụ xem bói cho server",
-      "Tô màu logo cho vui",
-    ],
-    correct: 0,
-    correctFeedback: "Đúng rồi! Đây mới là nhóm giải pháp cốt lõi đúng chất HQG.",
-    wrongFeedback: "Ý tưởng sáng tạo, nhưng HQG chưa triển khai dịch vụ xem bói cho server.",
-  },
-  {
-    title: "Nếu muốn hợp tác với HQG sau sự kiện, điều nào hợp lý nhất?",
-    options: [
-      "Nhờ HQG tư vấn giải pháp công nghệ / hạ tầng",
-      "Nhờ HQG đặt giúp cơm trưa",
-      "Nhờ HQG dạy chống buồn ngủ lúc họp",
-      "Nhờ HQG đàm phán với máy in",
-    ],
-    correct: 0,
-    correctFeedback: "Chuẩn! HQG ở đây để đồng hành công nghệ cùng doanh nghiệp, không phải để thương lượng với máy in.",
-    wrongFeedback: "Máy in đúng là khó nói chuyện, nhưng HQG vẫn mạnh nhất ở giải pháp công nghệ.",
+    correctFeedback: "Chính xác! HQG đã có hơn 15 năm đồng hành trong lĩnh vực công nghệ.",
+    wrongFeedback:
+      "Gần đúng về độ drama, nhưng đáp án thật là hơn 15 năm phát triển và đồng hành cùng doanh nghiệp.",
   },
 ];
 
@@ -89,6 +69,8 @@ export function Quiz({ onDone, onSkip }: { onDone: () => void; onSkip: () => voi
   const answer = (optionIndex: number) => {
     if (feedback) return;
     const isCorrect = optionIndex === question.correct;
+    if (isCorrect) sound.combo(5);
+    else sound.wrongHit();
     setSelected(optionIndex);
     setFeedback(isCorrect ? "correct" : "wrong");
     window.setTimeout(() => {
@@ -139,7 +121,7 @@ export function Quiz({ onDone, onSkip }: { onDone: () => void; onSkip: () => voi
             <span className="neon-text-green">cỡ nào?</span>
           </h1>
           <p className="mt-5 max-w-xl text-lg leading-8 text-muted-foreground">
-            Trả lời nhanh 5 câu trước khi bước vào trận chiến với ransomware. Sai cũng được, nhưng đừng chọn quá tự tin.
+            Trả lời nhanh 3 câu trước khi bước vào trận chiến với ransomware. Sai cũng được, nhưng đừng chọn quá tự tin.
           </p>
           <Button variant="ghost" onClick={onSkip} className="mt-5 text-muted-foreground hover:text-foreground">
             Bỏ qua và vào game

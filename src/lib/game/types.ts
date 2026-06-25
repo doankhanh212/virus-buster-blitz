@@ -19,6 +19,18 @@ export const DANGEROUS: ObjectDef[] = [
   { id: "hacker", label: "Hacker", kind: "danger", icon: "UserX", color: "red" },
 ];
 
+/**
+ * Ransomware "boss" — spawned on its own 10s timer, rendered larger and with a
+ * distinct lock icon. Smashing it triggers the full-screen lockdown effect.
+ */
+export const RANSOMWARE: ObjectDef = {
+  id: "ransomware",
+  label: "RANSOMWARE",
+  kind: "danger",
+  icon: "LockKeyhole",
+  color: "purple",
+};
+
 export const SAFE: ObjectDef[] = [
   {
     id: "backup",
@@ -56,10 +68,11 @@ export interface RoundConfig {
 export const ROUNDS: RoundConfig[] = [
   {
     id: 1,
-    title: "30 giây cứu công ty",
+    title: "60 giây cứu công ty",
     intro:
-      "Đập đúng mối nguy, né backup và hệ thống bảo vệ. Cứ mỗi 10 giây nhịp game sẽ nhanh hơn.",
-    duration: 30,
+      "Đập đúng mối nguy, né backup và hệ thống bảo vệ. Cứ mỗi 10 giây nhịp game nhanh hơn và một RANSOMWARE xuất hiện.",
+    hint: "Mỗi 10 giây có 1 ransomware khổng lồ — đập nó để chặn mã hóa toàn bộ dữ liệu!",
+    duration: 60,
     spawnMs: 900,
     lifetimeMs: 1800,
     safeRatio: 0.25,
@@ -98,6 +111,17 @@ export const WRONG_LINES = [
   ...WRONG_DEFENSE_LINES,
   ...WRONG_CUSTOMER_LINES,
   "Đập sai rồi! Giờ virus gửi lời cảm ơn cá nhân đến bạn.",
+];
+
+export const RANSOMWARE_BLOCK_LINES = [
+  "RANSOMWARE BỊ CHẶN! Dữ liệu được giải cứu trong gang tấc.",
+  "Bạn vừa bẻ khóa mã độc. Hacker đập bàn phím trong tức giận.",
+  "Mã hóa toàn bộ: THẤT BẠI. Công ty thở phào nhẹ nhõm.",
+];
+
+export const RANSOMWARE_MISS_LINES = [
+  "Ransomware lọt lưới! Dữ liệu bắt đầu bị mã hóa...",
+  "Bạn để ransomware sổng mất. Màn hình đòi tiền chuộc đang hiện ra.",
 ];
 
 export const RANDOM_LINES = [

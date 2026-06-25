@@ -7,6 +7,8 @@ import {
   DANGEROUS,
   INITIAL_STATS,
   RANDOM_LINES,
+  RANSOMWARE,
+  RANSOMWARE_MISS_LINES,
   ROUNDS,
   SAFE,
   WRONG_BACKUP_LINES,
@@ -18,6 +20,8 @@ import {
   type Player,
   type RoundConfig,
 } from "@/lib/game/types";
+import { LockdownOverlay } from "./LockdownOverlay";
+import { sound } from "@/lib/game/sound";
 import { Hammer, Pause, Play } from "lucide-react";
 
 interface SpawnedObj {
@@ -28,6 +32,8 @@ interface SpawnedObj {
   born: number;
   lifetime: number;
   exiting?: boolean;
+  boss?: boolean;
+  tint?: string;
 }
 
 interface Popup {
@@ -37,6 +43,33 @@ interface Popup {
   text: string;
   color: string;
 }
+
+interface Burst {
+  id: number;
+  x: number;
+  y: number;
+  color: string;
+  big?: boolean;
+}
+
+// Each ransomware boss picks a random "dangerous" neon tint so it can't be
+// spotted by colour alone — the lock shape + spinning ring give it away instead.
+const BOSS_TINTS = [
+  "oklch(0.72 0.27 25)", // red
+  "oklch(0.7 0.25 305)", // purple
+  "oklch(0.75 0.27 350)", // magenta
+  "oklch(0.8 0.2 60)", // orange
+  "oklch(0.85 0.22 145)", // toxic green
+  "oklch(0.88 0.18 200)", // electric cyan
+  "oklch(0.88 0.2 95)", // acid yellow
+];
+
+const SHARD_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
+// The ransomware shatter throws far more shards much further so it spreads
+// across the whole screen.
+const BIG_SHARD_ANGLES = [
+  0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5,
+];
 
 type Phase = "intro" | "playing" | "paused" | "ended";
 
@@ -95,11 +128,17 @@ export function Game({
   const [stats, setStats] = useState<GameStats>(INITIAL_STATS);
   const [objects, setObjects] = useState<SpawnedObj[]>([]);
   const [popups, setPopups] = useState<Popup[]>([]);
+  const [bursts, setBursts] = useState<Burst[]>([]);
   const [shake, setShake] = useState(false);
+  // Ransomware finale: `freezing` halts the arena the instant the boss is hit
+  // (so the 3D shatter is visible), then the full-screen overlay takes over.
+  const [freezing, setFreezing] = useState(false);
+  const [lockOverlay, setLockOverlay] = useState(false);
   const [hammer, setHammer] = useState({ visible: false, bonk: false, touch: false });
 
   const statsRef = useRef(stats);
   const popupSeq = useRef(0);
+  const burstSeq = useRef(0);
   const roundStatsRef = useRef({ correct: 0, totalClicks: 0, safeHits: 0, maxCombo: 0 });
   const arenaRef = useRef<HTMLDivElement>(null);
   const hammerRef = useRef<HTMLDivElement>(null);
@@ -134,6 +173,15 @@ export function Game({
     );
   }, []);
 
+  const addBurst = useCallback((x: number, y: number, color: string, big = false) => {
+    const id = ++burstSeq.current;
+    setBursts((current) => [...current, { id, x, y, color, big }]);
+    window.setTimeout(
+      () => setBursts((current) => current.filter((burst) => burst.id !== id)),
+      big ? 1000 : 650,
+    );
+  }, []);
+
   const applyCombo = useCallback(
     (current: GameStats, combo: number) => {
       let bonus = 0;
@@ -141,6 +189,7 @@ export function Game({
       if (combo === 10) bonus = 25;
       if (combo === 20) bonus = 50;
       if (bonus > 0) {
+        sound.combo(combo);
         window.setTimeout(
           () => addPopup(50, 14, `Combo x${combo}! +${bonus}`, "var(--neon-yellow)"),
           0,
@@ -216,6 +265,7 @@ export function Game({
             : rnd(WRONG_DEFENSE_LINES.concat(WRONG_LINES));
 
       addPopup(x, y, `-15 ${line}`, "var(--neon-red)");
+      sound.wrongHit();
       setShake(true);
       window.setTimeout(() => setShake(false), 360);
 
@@ -257,9 +307,33 @@ export function Game({
     [addPopup, updateStats],
   );
 
+  const handleBossHit = useCallback(
+    (obj: SpawnedObj, x: number, y: number) => {
+      // Hitting the ransomware is a TRAP, not a win: the arena freezes, the boss
+      // shatters into a big 3D burst (~1s), then the lockdown cinematic plays and
+      // the company is fully encrypted — a catastrophic failure ending.
+      setFreezing(true);
+      setShake(true);
+      sound.lockdown();
+      window.setTimeout(() => setShake(false), 400);
+      addBurst(x, y, obj.tint ?? "var(--neon-red)", true);
+      updateStats((current) => ({
+        ...current,
+        combo: 0,
+        totalClicks: current.totalClicks + 1,
+        misses: current.misses + 1,
+        dataLocked: 100,
+        backupHealth: 0,
+        customerTrust: 0,
+      }));
+      window.setTimeout(() => setLockOverlay(true), 1000);
+    },
+    [addBurst, updateStats],
+  );
+
   const handleClick = useCallback(
     (obj: SpawnedObj, event: React.MouseEvent | React.TouchEvent) => {
-      if (phase !== "playing" || obj.exiting) return;
+      if (phase !== "playing" || obj.exiting || freezing) return;
       const { x, y } = clickPoint(event);
 
       setHammer((current) => ({ ...current, bonk: true }));
@@ -267,7 +341,14 @@ export function Game({
 
       removeObject(obj.uid);
 
+      if (obj.boss) {
+        handleBossHit(obj, x, y);
+        return;
+      }
+
       if (obj.def.kind === "danger") {
+        sound.hit();
+        addBurst(x, y, colorMap[obj.def.color].glow);
         addPopup(x, y, `+10 ${rnd(CORRECT_LINES)}`, "var(--neon-green)");
         updateStats((current) => {
           const combo = current.combo + 1;
@@ -291,7 +372,7 @@ export function Game({
         handleSafeHit(obj, x, y);
       }
     },
-    [applyCombo, handleSafeHit, phase, updateStats, addPopup],
+    [addBurst, applyCombo, freezing, handleBossHit, handleSafeHit, phase, updateStats, addPopup],
   );
 
   const completeRound = useCallback(() => {
@@ -315,7 +396,7 @@ export function Game({
   }, [onEnd]);
 
   useEffect(() => {
-    if (phase !== "playing") return;
+    if (phase !== "playing" || freezing) return;
     const id = window.setInterval(() => {
       setTimeLeft((current) => {
         if (current <= 1) {
@@ -327,10 +408,10 @@ export function Game({
       });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [completeRound, phase]);
+  }, [completeRound, freezing, phase]);
 
   useEffect(() => {
-    if (phase !== "playing") return;
+    if (phase !== "playing" || freezing) return;
     const id = window.setInterval(() => {
       setObjects((current) => {
         if (current.length >= difficulty.maxObjects) return current;
@@ -352,36 +433,71 @@ export function Game({
     }, difficulty.spawnMs);
 
     return () => window.clearInterval(id);
-  }, [difficulty, phase]);
+  }, [difficulty, freezing, phase]);
+
+  // Ransomware boss: one spawns every 10 seconds, lives a little longer and is
+  // rendered larger so it stands out on the big BOE display.
+  useEffect(() => {
+    if (phase !== "playing" || freezing) return;
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      sound.bossSpawn();
+      setObjects((current) => [
+        ...current,
+        {
+          uid: `boss-${now}-${Math.random().toString(36).slice(2, 6)}`,
+          def: RANSOMWARE,
+          x: 18 + Math.random() * 64,
+          y: 22 + Math.random() * 52,
+          born: now,
+          lifetime: 2600,
+          boss: true,
+          tint: rnd(BOSS_TINTS),
+        },
+      ]);
+    }, 10000);
+    return () => window.clearInterval(id);
+  }, [freezing, phase]);
 
   useEffect(() => {
-    if (phase !== "playing") return;
+    if (phase !== "playing" || freezing) return;
     const id = window.setInterval(() => {
       const now = Date.now();
       setObjects((current) => {
         const expired = current.filter((item) => !item.exiting && now - item.born > item.lifetime);
         if (expired.length === 0) return current;
-        const missed = expired.filter((item) => item.def.kind === "danger").length;
-        if (missed > 0) {
+        const bossMissed = expired.filter((item) => item.boss).length;
+        const missed = expired.filter((item) => item.def.kind === "danger" && !item.boss).length;
+        if (missed > 0 || bossMissed > 0) {
+          sound.miss();
+          const penalty = 5 * missed + 20 * bossMissed;
           updateStats((stat) => ({
             ...stat,
-            score: Math.max(0, stat.score - 5 * missed),
-            dataLocked: clampMetric(stat.dataLocked + 4 * missed),
-            misses: stat.misses + missed,
+            score: Math.max(0, stat.score - penalty),
+            dataLocked: clampMetric(stat.dataLocked + 4 * missed + 14 * bossMissed),
+            misses: stat.misses + missed + bossMissed,
             combo: 0,
           }));
-          addPopup(50, 18, `-${5 * missed} Mối nguy lọt lưới!`, "var(--neon-red)");
+          if (bossMissed > 0) {
+            addPopup(50, 18, `-${penalty} ${rnd(RANSOMWARE_MISS_LINES)}`, "var(--neon-red)");
+          } else {
+            addPopup(50, 18, `-${penalty} Mối nguy lọt lưới!`, "var(--neon-red)");
+          }
         }
         return current.filter((item) => now - item.born <= item.lifetime);
       });
     }, 180);
     return () => window.clearInterval(id);
-  }, [addPopup, phase, updateStats]);
+  }, [addPopup, freezing, phase, updateStats]);
 
   const startRound = () => {
+    sound.gameStart();
     roundStatsRef.current = { correct: 0, totalClicks: 0, safeHits: 0, maxCombo: 0 };
     setTimeLeft(round.duration);
     setObjects([]);
+    setBursts([]);
+    setFreezing(false);
+    setLockOverlay(false);
     setPhase("playing");
   };
 
@@ -390,12 +506,12 @@ export function Game({
   }, [round.duration]);
 
   useEffect(() => {
-    if (phase !== "playing") return;
+    if (phase !== "playing" || freezing) return;
     const id = window.setInterval(() => {
       if (Math.random() < 0.35) addPopup(50, 85, rnd(RANDOM_LINES), "var(--neon-cyan)");
     }, 5500);
     return () => window.clearInterval(id);
-  }, [addPopup, phase]);
+  }, [addPopup, freezing, phase]);
 
   const legendaryHammer = difficultyStage >= 2 || stats.combo >= 10;
 
@@ -444,7 +560,7 @@ export function Game({
 
         {objects.map((item) => {
           const color = colorMap[item.def.color];
-          const size = 92;
+          const size = item.boss ? 132 : 92;
           return (
             <button
               key={item.uid}
@@ -453,23 +569,71 @@ export function Game({
                 handleClick(item, event);
               }}
               onTouchStart={(event) => event.stopPropagation()}
-              className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 select-none rounded-2xl focus:outline-none focus:ring-2 focus:ring-[var(--neon-cyan)] ${item.exiting ? "explode" : "pop-in"}`}
+              className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 select-none rounded-2xl focus:outline-none focus:ring-2 focus:ring-[var(--neon-cyan)] ${item.exiting ? "explode" : "pop-in"} ${item.boss ? "z-20" : ""}`}
               style={{ left: `${item.x}%`, top: `${item.y}%`, width: size, height: size }}
               aria-label={item.def.label}
             >
-              <span
-                className={`relative flex h-full w-full flex-col items-center justify-center rounded-2xl bg-gradient-to-br ${color.chip} pulse-glow`}
-                style={{
-                  color: color.glow,
-                  boxShadow: `0 0 24px ${color.glow}, inset 0 0 20px ${color.glow}40`,
-                }}
-              >
-                <GameIcon name={item.def.icon} className="h-10 w-10" />
-                <span className="mt-1 px-1 text-center text-[10px] font-black leading-tight text-white drop-shadow sm:text-xs">
-                  {item.def.label}
+              {item.boss ? (
+                <span
+                  className="ransomware-boss relative flex h-full w-full flex-col items-center justify-center rounded-full"
+                  style={
+                    { "--boss-color": item.tint, color: item.tint } as React.CSSProperties
+                  }
+                >
+                  <GameIcon name={item.def.icon} className="relative z-10 h-14 w-14" />
+                  <span className="relative z-10 mt-0.5 px-1 text-center text-[11px] font-black uppercase tracking-[0.14em] text-white drop-shadow-[0_0_6px_rgba(0,0,0,0.9)]">
+                    {item.def.label}
+                  </span>
                 </span>
-              </span>
+              ) : (
+                <span
+                  className={`relative flex h-full w-full flex-col items-center justify-center rounded-2xl bg-gradient-to-br ${color.chip} pulse-glow`}
+                  style={{
+                    color: color.glow,
+                    boxShadow: `0 0 24px ${color.glow}, inset 0 0 20px ${color.glow}40`,
+                  }}
+                >
+                  <GameIcon name={item.def.icon} className="h-10 w-10" />
+                  <span className="mt-1 px-1 text-center text-[10px] font-black leading-tight text-white drop-shadow sm:text-xs">
+                    {item.def.label}
+                  </span>
+                </span>
+              )}
             </button>
+          );
+        })}
+
+        {bursts.map((burst) => {
+          const dist = burst.big ? 340 : 64;
+          const angles = burst.big ? BIG_SHARD_ANGLES : SHARD_ANGLES;
+          return (
+            <div
+              key={burst.id}
+              className={`smash-burst pointer-events-none absolute z-20 ${burst.big ? "smash-burst-big" : ""}`}
+              style={
+                {
+                  left: `${burst.x}%`,
+                  top: `${burst.y}%`,
+                  "--burst-color": burst.color,
+                } as React.CSSProperties
+              }
+            >
+              <span className="smash-ring" />
+              <span className="smash-core" />
+              {angles.map((angle) => (
+                <span
+                  key={angle}
+                  className="smash-shard"
+                  style={
+                    {
+                      "--dx": `${Math.cos((angle * Math.PI) / 180) * dist}px`,
+                      "--dy": `${Math.sin((angle * Math.PI) / 180) * dist}px`,
+                      "--rot": `${angle}deg`,
+                    } as React.CSSProperties
+                  }
+                />
+              ))}
+            </div>
           );
         })}
 
@@ -546,6 +710,8 @@ export function Game({
           </Button>
         </div>
       </div>
+
+      {lockOverlay ? <LockdownOverlay onDone={completeRound} /> : null}
     </main>
   );
 }
@@ -571,8 +737,9 @@ function IntroPanel({
       ) : null}
 
       <div className="mt-5 rounded-xl bg-[oklch(0.24_0.1_200/0.38)] p-4 text-left text-sm font-semibold text-foreground/90">
-        Một vòng duy nhất trong 30 giây. Từ giây 10 và giây 20, vật thể xuất hiện nhanh hơn, tồn tại
-        ngắn hơn và dễ lẫn mục tiêu an toàn hơn.
+        Một vòng duy nhất trong 60 giây. Mỗi 10 giây, nhịp game nhanh hơn và một{" "}
+        <span className="font-black text-[var(--neon-red)]">RANSOMWARE</span> khổng lồ xuất hiện — đập
+        trúng nó để chặn mã hóa toàn bộ dữ liệu.
       </div>
 
       <Button

@@ -194,10 +194,11 @@
   }
   .pop-in { animation: pop-in 0.35s cubic-bezier(.34,1.56,.64,1) backwards; }
   @keyframes explode {
-    0% { transform: scale(1); opacity: 1; }
-    100% { transform: scale(2.5); opacity: 0; }
+    0% { transform: perspective(420px) scale(1) rotate3d(1,1,0,0deg); opacity: 1; }
+    35% { transform: perspective(420px) scale(1.3) rotate3d(1,-1,0,55deg); opacity: 1; }
+    100% { transform: perspective(420px) scale(0.3) rotate3d(1,1,0,160deg); opacity: 0; }
   }
-  .explode { animation: explode 0.5s ease-out forwards; }
+  .explode { animation: explode 0.45s cubic-bezier(.3,.7,.4,1) forwards; }
   @keyframes float-up {
     0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
     20% { transform: translate(-50%, -10px) scale(1.2); opacity: 1; }
@@ -210,6 +211,158 @@
     100% { transform: rotate(-20deg) scale(1); }
   }
   .hammer-bonk { animation: hammer-bonk 150ms ease-out; transform-origin: 80% 80%; }
+  /* Ransomware boss marker — colour comes from --boss-color (randomised per spawn) */
+  @keyframes boss-pulse {
+    0%,100% { box-shadow: 0 0 26px var(--boss-color, var(--neon-red)), inset 0 0 24px oklch(0 0 0 / 0.55); transform: scale(1); }
+    50% { box-shadow: 0 0 48px var(--boss-color, var(--neon-red)), 0 0 96px var(--boss-color, var(--neon-red)), inset 0 0 30px oklch(0 0 0 / 0.7); transform: scale(1.07); }
+  }
+  @keyframes boss-spin { to { transform: rotate(360deg); } }
+  @keyframes boss-spin-rev { to { transform: rotate(-360deg); } }
+  .ransomware-boss {
+    --boss-color: var(--neon-red);
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 38%, color-mix(in oklch, var(--boss-color) 55%, transparent), oklch(0.08 0.03 300 / 0.96) 72%);
+    animation: boss-pulse 0.7s ease-in-out infinite;
+  }
+  /* Outer spinning electric danger ring */
+  .ransomware-boss::before {
+    content: '';
+    position: absolute; inset: -7px;
+    border-radius: 9999px;
+    background: conic-gradient(from 0deg, transparent 0deg, var(--boss-color) 40deg, transparent 130deg, var(--boss-color) 220deg, transparent 320deg);
+    filter: blur(1px) drop-shadow(0 0 8px var(--boss-color));
+    animation: boss-spin 0.9s linear infinite;
+    z-index: 0;
+  }
+  /* Inner dashed counter-rotating ring */
+  .ransomware-boss::after {
+    content: '';
+    position: absolute; inset: 4px;
+    border-radius: 9999px;
+    border: 2px dashed var(--boss-color);
+    opacity: 0.85;
+    animation: boss-spin-rev 1.6s linear infinite;
+    z-index: 0;
+  }
+
+  /* 3D smash burst when a danger/boss is hit */
+  .smash-burst { transform: translate(-50%, -50%); transform-style: preserve-3d; perspective: 320px; }
+  @keyframes smash-ring {
+    0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.95; }
+    100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
+  }
+  .smash-ring {
+    position: absolute; left: 0; top: 0; width: 120px; height: 120px;
+    margin: -60px 0 0 -60px;
+    border-radius: 9999px;
+    border: 3px solid var(--burst-color, #fff);
+    box-shadow: 0 0 22px var(--burst-color, #fff);
+    animation: smash-ring 0.5s ease-out forwards;
+  }
+  @keyframes smash-core {
+    0% { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+  }
+  .smash-core {
+    position: absolute; left: 0; top: 0; width: 46px; height: 46px;
+    border-radius: 9999px;
+    background: radial-gradient(circle, #fff, var(--burst-color, #fff) 60%, transparent 72%);
+    filter: drop-shadow(0 0 14px var(--burst-color, #fff));
+    animation: smash-core 0.4s ease-out forwards;
+  }
+  @keyframes smash-shard {
+    0% { transform: translate3d(0,0,0) rotate(var(--rot)) scale(1); opacity: 1; }
+    100% { transform: translate3d(var(--dx), var(--dy), 0) rotate(calc(var(--rot) + 220deg)) scale(0.2); opacity: 0; }
+  }
+  .smash-shard {
+    position: absolute; left: -5px; top: -9px; width: 10px; height: 18px;
+    border-radius: 2px;
+    background: var(--burst-color, #fff);
+    box-shadow: 0 0 10px var(--burst-color, #fff);
+    animation: smash-shard 0.6s cubic-bezier(.2,.7,.3,1) forwards;
+  }
+
+  /* Full-screen lockdown cinematic */
+  @keyframes lockdown-in {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  .lockdown-overlay { animation: lockdown-in 0.25s ease-out; }
+  @keyframes lockdown-out { to { opacity: 0; transform: scale(1.04); } }
+  .lockdown-leaving { animation: lockdown-out 0.45s ease-in forwards; }
+  @keyframes lockdown-shake {
+    0%,100% { transform: translate(0,0); }
+    25% { transform: translate(-4px, 3px); }
+    50% { transform: translate(5px, -2px); }
+    75% { transform: translate(-3px, -3px); }
+  }
+  .lockdown-shake { animation: lockdown-shake 0.16s linear infinite; }
+  @keyframes lockdown-sweep {
+    0% { top: -33%; opacity: 0; }
+    20% { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+  .lockdown-sweep {
+    background: linear-gradient(180deg, transparent, oklch(0.7 0.27 25 / 0.28) 50%, transparent);
+    box-shadow: 0 0 40px oklch(0.7 0.27 25 / 0.5);
+    animation: lockdown-sweep 1.3s ease-in-out infinite;
+  }
+  @keyframes lockdown-progress { from { width: 0%; } to { width: 100%; } }
+  .lockdown-progress { width: 0%; animation: lockdown-progress 3.8s ease-out forwards; }
+  /* Pulsing red danger vignette */
+  @keyframes lockdown-vignette { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+  .lockdown-vignette {
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 50%, transparent 34%, oklch(0.4 0.26 25 / 0.6) 100%);
+    animation: lockdown-vignette 0.85s ease-in-out infinite;
+  }
+  /* Troll reward reveal */
+  @keyframes gift-pop {
+    0% { transform: scale(0) rotate(-25deg); opacity: 0; }
+    60% { transform: scale(1.25) rotate(10deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+  .gift-pop { animation: gift-pop 0.6s cubic-bezier(.34,1.56,.64,1) backwards; }
+  @keyframes lockdown-thanks {
+    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .lockdown-thanks { animation: lockdown-thanks 0.7s ease-out 5s backwards; }
+
+  /* Bigger, longer 3D shatter for the ransomware boss — spreads screen-wide */
+  .smash-burst-big .smash-ring { width: 340px; height: 340px; margin: -170px 0 0 -170px; border-width: 5px; animation-duration: 0.95s; }
+  .smash-burst-big .smash-core { width: 96px; height: 96px; animation-duration: 0.7s; }
+  .smash-burst-big .smash-shard { width: 18px; height: 34px; left: -9px; top: -17px; animation-duration: 1s; }
+  @keyframes lockdown-cell {
+    0% { opacity: 0; transform: translateY(-12px) scale(0.6); color: var(--neon-purple); }
+    40% { opacity: 1; transform: translateY(0) scale(1); color: var(--neon-red); }
+    100% { opacity: 0.25; transform: translateY(6px) scale(1); color: var(--neon-cyan); }
+  }
+  .lockdown-cell {
+    color: var(--neon-red);
+    text-shadow: 0 0 10px currentColor;
+    animation: lockdown-cell 1.4s ease-in-out infinite;
+  }
+  @keyframes lockdown-core {
+    0% { transform: scale(0.4); opacity: 0; }
+    60% { transform: scale(1.12); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .lockdown-core { animation: lockdown-core 0.6s cubic-bezier(.34,1.56,.64,1) backwards; }
+  @keyframes lockdown-resolve {
+    0% { transform: scale(0.5) rotate(-8deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+  .lockdown-resolve { animation: lockdown-resolve 0.5s cubic-bezier(.34,1.56,.64,1) backwards; }
+  @keyframes lockdown-glitch {
+    0%,100% { transform: translate(0,0); text-shadow: 0 0 12px var(--neon-red); }
+    20% { transform: translate(-3px,1px); text-shadow: 3px 0 var(--neon-cyan), -3px 0 var(--neon-red); }
+    40% { transform: translate(3px,-1px); text-shadow: -3px 0 var(--neon-purple), 3px 0 var(--neon-red); }
+    60% { transform: translate(-2px,2px); }
+  }
+  .lockdown-glitch { animation: lockdown-glitch 0.4s steps(2) infinite; }
+
   @keyframes scan {
     0% { transform: translateY(-100%); }
     100% { transform: translateY(100vh); }

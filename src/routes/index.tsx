@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EndScreen } from "@/components/game/EndScreen";
 import { Game, type EndResult } from "@/components/game/Game";
 import { Landing } from "@/components/game/Landing";
@@ -7,6 +7,8 @@ import { ParticipantForm } from "@/components/game/ParticipantForm";
 import { Quiz } from "@/components/game/Quiz";
 import { StoryIntro } from "@/components/game/StoryIntro";
 import { INITIAL_STATS, type GameStats, type Player } from "@/lib/game/types";
+import { saveScore } from "@/lib/game/storage";
+import { sound } from "@/lib/game/sound";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -14,7 +16,7 @@ export const Route = createFileRoute("/")({
       { title: "Đập Virus Cứu Công Ty" },
       {
         name: "description",
-        content: "30 giây sinh tồn - Đập virus, cứu công ty, đừng đập nhầm backup!",
+        content: "60 giây sinh tồn - Đập virus, cứu công ty, đừng đập nhầm backup!",
       },
       { property: "og:title", content: "Đập Virus Cứu Công Ty" },
       {
@@ -35,6 +37,16 @@ function Index() {
   const [result, setResult] = useState<{ stats: GameStats }>({
     stats: INITIAL_STATS,
   });
+  const [lastEntryId, setLastEntryId] = useState<string | undefined>(undefined);
+
+  // Background music follows the screen. The lockdown cinematic stops music on
+  // its own (for dramatic effect) and the next screen change restarts it.
+  useEffect(() => {
+    if (screen === "game") sound.startMusic("battle");
+    else sound.startMusic("menu");
+  }, [screen]);
+
+  useEffect(() => () => sound.stopMusic(), []);
 
   const savePlayer = (nextPlayer: Player) => {
     try {
@@ -48,6 +60,10 @@ function Index() {
 
   const onEnd = (nextResult: EndResult) => {
     setResult({ stats: nextResult.stats });
+    if (player) {
+      const entry = saveScore(player, nextResult.stats);
+      setLastEntryId(entry.id);
+    }
     setScreen("end");
   };
 
@@ -76,6 +92,7 @@ function Index() {
       <EndScreen
         player={player}
         stats={result.stats}
+        highlightId={lastEntryId}
         onReplay={() => setScreen("game")}
         onHome={() => setScreen("landing")}
       />
