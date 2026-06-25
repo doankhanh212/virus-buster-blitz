@@ -12,4 +12,9 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Build a Vercel-compatible bundle (.vercel/output) so `vercel deploy` works.
+  // Without this, the deploy plugin is skipped outside the Lovable sandbox and
+  // Vercel serves nothing → 404. Override the preset via NITRO_PRESET if you
+  // deploy somewhere else (e.g. "node-server", "cloudflare-module").
+  nitro: { preset: process.env.NITRO_PRESET || "vercel" },
 });
